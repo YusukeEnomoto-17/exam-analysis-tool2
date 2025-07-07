@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import io
+import numpy as np
+import random
 
 # --- ページの基本設定 ---
 st.set_page_config(
@@ -88,11 +90,13 @@ div[data-baseweb="tag"] span[role="button"] svg, div[data-testid="stTag"] span[r
 
 # --- アプリのタイトルと説明 ---
 st.title("📊 成績分析ツール")
+# 【修正】使い方のテキストを更新
 st.info(
     "**使い方**\n"
-    "1. Excelなどからヘッダー行を含むデータをコピーし、下のボックスに貼り付けます\n"
-    "2. 実行したい分析のボタン（AまたはB）を押して、データを読み込みます\n"
-    "3. 左のサイドバーで項目を設定し、グラフ作成ボタンを押してください"
+    "1. 必ず1行目をタイトル行として、Excelなどを範囲指定してコピーして下のボックスに貼り付けます。\n"
+    "   ※不要な列が含まれたまま張り付けても構いません。\n"
+    "2. 実行したい分析のボタン（AまたはB）を押して、データを読み込みます。\n"
+    "3. 左のサイドバーで項目を設定し、グラフ作成ボタンを押してください。"
 )
 
 # --- セッションステートの初期化 ---
@@ -112,15 +116,41 @@ if 'compare_mode' not in st.session_state:
     st.session_state.compare_mode = False
 if 'ready_to_merge' not in st.session_state:
     st.session_state.ready_to_merge = False
+if 'current_data_text' not in st.session_state:
+    st.session_state.current_data_text = ""
+
+# --- デモデータ生成関数 ---
+def generate_demo_data():
+    surnames = ["佐藤", "鈴木", "高橋", "田中", "渡辺", "伊藤", "山本", "中村", "小林", "加藤", "吉田", "山田", "佐々木", "山口", "松本", "井上", "木村", "林", "斎藤", "清水"]
+    given_names = ["太郎", "花子", "一郎", "美咲", "健太", "さくら", "大輔", "愛", "翔太", "陽子", "直樹", "恵美", "拓也", "舞", "誠", "優子", "雄太", "杏奈", "浩二", "彩"]
+    
+    names = list(set([f"{random.choice(surnames)} {random.choice(given_names)}" for _ in range(100)]))
+    random.shuffle(names)
+    names = names[:60]
+
+    data = {
+        "組": [1]*20 + [2]*20 + [3]*20,
+        "氏名": names,
+        "部活": np.random.choice(["野球", "サッカー", ""], 60, p=[0.25, 0.25, 0.5]),
+        "国語": np.random.randint(30, 101, size=60),
+        "数学": np.random.randint(30, 101, size=60),
+        "英語": np.random.randint(30, 101, size=60)
+    }
+    df = pd.DataFrame(data)
+    return df.to_csv(sep='\t', index=False)
 
 # --- UI: データ入力エリア ---
-col_label, col_toggle = st.columns([2, 1])
+col_label, col_demo, col_toggle = st.columns([1.5, 1, 1])
 with col_label:
     st.subheader("▼ データ貼り付けエリア")
+with col_demo:
+    if st.button("デモデータを使用"):
+        st.session_state.current_data_text = generate_demo_data()
 with col_toggle:
     st.session_state.compare_mode = st.toggle("過去の結果と比較", value=st.session_state.compare_mode, key="compare_toggle")
 
-data_input = st.text_area("現在のデータを貼り付け", height=200, placeholder="（ここに現在のデータを貼り付けます）", label_visibility="collapsed")
+# 【修正】テキストエリアの値をセッションステートで管理
+data_input = st.text_area("現在のデータを貼り付け", value=st.session_state.current_data_text, height=200, placeholder="（ここに現在のデータを貼り付けます）", label_visibility="collapsed", key="current_data_input_area")
 
 if st.session_state.compare_mode:
     past_data_input = st.text_area("過去のデータを貼り付け", height=200, placeholder="（ここに過去のデータを貼り付けます）", label_visibility="collapsed")
@@ -308,7 +338,7 @@ if st.session_state.df_final is not None:
                 st.markdown("---")
             st.success("🎉 全てのグラフが完成しました！")
 
-# --- 【追加】著作権表示 ---
+# --- 著作権表示 ---
 st.markdown(
     """
     <div style="text-align: center; padding: 2rem 1rem; color: #888; font-size: 0.8rem;">
