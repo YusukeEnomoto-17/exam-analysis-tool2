@@ -90,11 +90,10 @@ div[data-baseweb="tag"] span[role="button"] svg, div[data-testid="stTag"] span[r
 
 # --- アプリのタイトルと説明 ---
 st.title("📊 成績分析ツール")
-# 【修正】使い方のテキストを更新
 st.info(
     "**使い方**\n"
     "1. 必ず1行目をタイトル行として、Excelなどを範囲指定してコピーして下のボックスに貼り付けます。\n"
-    "   ※不要な列が含まれたまま張り付けても構いません。\n"
+    "   ※不要な列が含まれたまま貼り付けても構いません。\n"
     "2. 実行したい分析のボタン（AまたはB）を押して、データを読み込みます。\n"
     "3. 左のサイドバーで項目を設定し、グラフ作成ボタンを押してください。"
 )
@@ -139,6 +138,16 @@ def generate_demo_data():
     df = pd.DataFrame(data)
     return df.to_csv(sep='\t', index=False)
 
+# --- 【追加】データ前処理関数 ---
+def preprocess_dataframe(df):
+    """文字列型の列にある空欄や欠損値を '(未所属)' に置き換える"""
+    for col in df.columns:
+        # オブジェクト型（主に文字列）のカラムを対象
+        if pd.api.types.is_object_dtype(df[col]):
+            # 空白文字列をNaNに統一してから、まとめて置換
+            df[col] = df[col].replace(r'^\s*$', np.nan, regex=True).fillna('（未所属）')
+    return df
+
 # --- UI: データ入力エリア ---
 col_label, col_demo, col_toggle = st.columns([1.5, 1, 1])
 with col_label:
@@ -149,7 +158,6 @@ with col_demo:
 with col_toggle:
     st.session_state.compare_mode = st.toggle("過去の結果と比較", value=st.session_state.compare_mode, key="compare_toggle")
 
-# 【修正】テキストエリアの値をセッションステートで管理
 data_input = st.text_area("現在のデータを貼り付け", value=st.session_state.current_data_text, height=200, placeholder="（ここに現在のデータを貼り付けます）", label_visibility="collapsed", key="current_data_input_area")
 
 if st.session_state.compare_mode:
@@ -166,6 +174,7 @@ def process_data_inputs(current_data_str, past_data_str, compare_mode_is_on):
 
     try:
         df_current = pd.read_csv(io.StringIO(current_data_str), sep='\t')
+        df_current = preprocess_dataframe(df_current) # 【追加】前処理を実行
         st.session_state.df_current = df_current
         st.success("✅ 現在のデータを読み込みました。")
 
@@ -180,6 +189,7 @@ def process_data_inputs(current_data_str, past_data_str, compare_mode_is_on):
                 return
             try:
                 df_past = pd.read_csv(io.StringIO(past_data_str), sep='\t')
+                df_past = preprocess_dataframe(df_past) # 【追加】前処理を実行
                 st.session_state.df_past = df_past
                 st.success("✅ 過去のデータを読み込みました。")
                 st.session_state.ready_to_merge = True
@@ -241,11 +251,11 @@ if st.session_state.df_final is not None:
     # モードA: 散布図
     if st.session_state.analysis_mode == 'A':
         st.sidebar.header("A: 散布図の設定")
-        x_axis_col = st.sidebar.selectbox("X軸（横軸）", column_names, index=0)
-        y_axis_col = st.sidebar.selectbox("Y軸（縦軸）", column_names, index=1 if len(column_names) > 1 else 0)
+        x_axis_col = st.sidebar.selectbox("X軸（横軸）", column_names, index=0, key="a_x_axis")
+        y_axis_col = st.sidebar.selectbox("Y軸（縦軸）", column_names, index=1 if len(column_names) > 1 else 0, key="a_y_axis")
         color_options = ["色分けしない"] + column_names
-        color_col = st.sidebar.selectbox("色分け", color_options, index=0)
-        hover_data_cols = st.sidebar.multiselect("ホバー情報", column_names, default=[], key="hover_a")
+        color_col = st.sidebar.selectbox("色分け", color_options, index=0, key="a_color")
+        hover_data_cols = st.sidebar.multiselect("ホバー情報", column_names, default=[], key="a_hover")
 
         if st.sidebar.button("グラフ作成", type="primary"):
             try:
@@ -276,9 +286,9 @@ if st.session_state.df_final is not None:
     # モードB: 集団比較
     elif st.session_state.analysis_mode == 'B':
         st.sidebar.header("B: 集団比較の設定")
-        x_axis_col_b = st.sidebar.selectbox("X軸（横軸）※クラスなど", column_names, index=1 if len(column_names) > 1 else 0)
-        y_axis_cols_b = st.sidebar.multiselect("Y軸（縦軸）（複数選択可）", [col for col in column_names if col != x_axis_col_b], default=[])
-        hover_data_cols_b = st.sidebar.multiselect("ホバー情報", column_names, default=[], key="hover_b")
+        x_axis_col_b = st.sidebar.selectbox("X軸（横軸）※クラスなど", column_names, index=1 if len(column_names) > 1 else 0, key="b_x_axis")
+        y_axis_cols_b = st.sidebar.multiselect("Y軸（縦軸）（複数選択可）", [col for col in column_names if col != x_axis_col_b], default=[], key="b_y_axis")
+        hover_data_cols_b = st.sidebar.multiselect("ホバー情報", column_names, default=[], key="b_hover")
 
         btn1_col, btn2_col = st.sidebar.columns(2)
         
@@ -292,6 +302,7 @@ if st.session_state.df_final is not None:
                 figs_list = []
                 for y_col in y_axis_cols_b:
                     stats_df = None
+                    # 数値データの場合のみ統計量を計算
                     if pd.api.types.is_numeric_dtype(df[y_col]):
                         stats_df = df.groupby(x_axis_col_b)[y_col].describe()
                         stats_df = stats_df[['count', 'mean', 'std', 'min', '50%', 'max']].round(2)
