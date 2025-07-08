@@ -138,11 +138,13 @@ def generate_demo_data():
     df = pd.DataFrame(data)
     return df.to_csv(sep='\t', index=False)
 
-# --- データ前処理関数 ---
+# --- 【追加】データ前処理関数 ---
 def preprocess_dataframe(df):
     """文字列型の列にある空欄や欠損値を '(未所属)' に置き換える"""
     for col in df.columns:
+        # オブジェクト型（主に文字列）のカラムを対象
         if pd.api.types.is_object_dtype(df[col]):
+            # 空白文字列をNaNに統一してから、まとめて置換
             df[col] = df[col].replace(r'^\s*$', np.nan, regex=True).fillna('（未所属）')
     return df
 
@@ -172,7 +174,7 @@ def process_data_inputs(current_data_str, past_data_str, compare_mode_is_on):
 
     try:
         df_current = pd.read_csv(io.StringIO(current_data_str), sep='\t')
-        df_current = preprocess_dataframe(df_current)
+        df_current = preprocess_dataframe(df_current) # 【追加】前処理を実行
         st.session_state.df_current = df_current
         st.success("✅ 現在のデータを読み込みました。")
 
@@ -187,7 +189,7 @@ def process_data_inputs(current_data_str, past_data_str, compare_mode_is_on):
                 return
             try:
                 df_past = pd.read_csv(io.StringIO(past_data_str), sep='\t')
-                df_past = preprocess_dataframe(df_past)
+                df_past = preprocess_dataframe(df_past) # 【追加】前処理を実行
                 st.session_state.df_past = df_past
                 st.success("✅ 過去のデータを読み込みました。")
                 st.session_state.ready_to_merge = True
@@ -300,6 +302,7 @@ if st.session_state.df_final is not None:
                 figs_list = []
                 for y_col in y_axis_cols_b:
                     stats_df = None
+                    # 数値データの場合のみ統計量を計算
                     if pd.api.types.is_numeric_dtype(df[y_col]):
                         stats_df = df.groupby(x_axis_col_b)[y_col].describe()
                         stats_df = stats_df[['count', 'mean', 'std', 'min', '50%', 'max']].round(2)
@@ -346,11 +349,10 @@ if st.session_state.df_final is not None:
                 st.markdown("---")
             st.success("🎉 全てのグラフが完成しました！")
 
-# --- 著作権・注意書き表示 ---
+# --- 著作権表示 ---
 st.markdown(
     """
     <div style="text-align: center; padding: 2rem 1rem; color: #888; font-size: 0.8rem;">
-        <p>※貼り付けられたデータは分析処理のために一時的にサーバーに送信されますが、永続的に保存されることはありません。ブラウザを閉じるとデータは破棄されます。</p>
         © YusukeEnomoto
     </div>
     """,
